@@ -5,6 +5,14 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
+@interface TMLog () {
+    
+    CFSocketRef socket;
+    NSData *addrData;
+}
+
+@end
+
 @implementation TMLog
 
 + (id)startWithHost:(NSString *)host port:(int)port {
@@ -32,6 +40,21 @@
             
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(notificationReceived:) name:NSFileHandleReadCompletionNotification object:stderrReadFileHandle];
             [stderrReadFileHandle readInBackgroundAndNotify];
+            
+            socket = CFSocketCreate(kCFAllocatorDefault, PF_INET, SOCK_DGRAM, IPPROTO_UDP, 0, NULL, NULL);
+            
+            struct hostent *hostname_to_ip = gethostbyname([self.host cStringUsingEncoding:NSUTF8StringEncoding]);
+            
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_len = sizeof(addr);
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(self.port);
+            
+            inet_aton(inet_ntoa(* (struct in_addr *)hostname_to_ip->h_addr_list[0]), &addr.sin_addr);
+            
+            //convert the struct to a NSData object
+            addrData = [NSData dataWithBytes:&addr length:sizeof(addr)];
         }
     }
     
@@ -44,7 +67,7 @@
 }
 
 - (BOOL) canSendLogs {
-#if !(TARGET_IPHONE_SIMULATOR)
+#if !(TARGET_IPHONE_SIMULATOR || DEBUG)
     return true;
 #else 
     return false;
@@ -64,22 +87,7 @@
 - (void) sendLog:(NSString *)logMessage {
     if (logMessage == nil)
         return;
-        
-    CFSocketRef socket;
-    socket = CFSocketCreate(kCFAllocatorDefault, PF_INET, SOCK_DGRAM, IPPROTO_UDP, 0, NULL, NULL);
-    
-    struct hostent *hostname_to_ip = gethostbyname([self.host cStringUsingEncoding:NSUTF8StringEncoding]);
-    
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_len = sizeof(addr);
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(self.port);
-    
-    inet_aton(inet_ntoa(* (struct in_addr *)hostname_to_ip->h_addr_list[0]), &addr.sin_addr);
-    
-    //convert the struct to a NSData object
-    NSData *addrData = [NSData dataWithBytes:&addr length:sizeof(addr)];
+
     CFSocketSendData(socket, (CFDataRef)addrData, (CFDataRef)[logMessage dataUsingEncoding:NSUTF8StringEncoding], 0);
 }
 
